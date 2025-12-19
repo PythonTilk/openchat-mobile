@@ -28,9 +28,9 @@ export default function WelcomeScreen() {
           </Text>
         </View>
         <View style={styles.featureRow}>
-          <Ionicons name="lock-open" size={20} color="#10b981" />
+          <Ionicons name="sparkles" size={20} color="#10b981" />
           <Text style={[styles.featureText, isDark && styles.featureTextDark]}>
-            No account required to start
+            Free unlimited AI with Puter account
           </Text>
         </View>
         <View style={styles.featureRow}>
@@ -43,22 +43,22 @@ export default function WelcomeScreen() {
 
       <View style={styles.buttonContainer}>
         <Button
-          title="Start Chatting"
-          onPress={() => router.push("/(tabs)")}
-          variant="primary"
-          icon="chatbubble-ellipses"
-        />
-
-        <Button
-          title="Sign in with Puter"
+          title="Sign in with Puter (Free)"
           onPress={() => router.push("/(auth)/puter-auth")}
-          variant="secondary"
-          icon="person-circle-outline"
+          variant="primary"
+          icon="sparkles"
         />
 
         <Button
           title="Connect to Open-WebUI Server"
           onPress={() => router.push("/(auth)/login")}
+          variant="secondary"
+          icon="server-outline"
+        />
+
+        <Button
+          title="Skip for now"
+          onPress={() => router.push("/(tabs)")}
           variant="text"
         />
       </View>

@@ -13,7 +13,8 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "../../src/hooks/useChat";
 import { useChatStore } from "../../src/stores/chatStore";
-import { MessageBubble, EmptyState } from "../../src/components";
+import { useAuthStore } from "../../src/stores/authStore";
+import { MessageBubble, EmptyState, Button } from "../../src/components";
 import type { Message } from "../../src/types";
 
 export default function ChatScreen() {
@@ -22,9 +23,12 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList<Message>>(null);
 
   const { selectedModel } = useChatStore();
+  const { isPuterAuthenticated, isOpenWebUIAuthenticated } = useAuthStore();
   const { conversation, messages, isStreaming, error, sendMessage } = useChat(
     id || "",
   );
+
+  const isAuthenticated = isPuterAuthenticated || isOpenWebUIAuthenticated;
 
   // Redirect if conversation doesn't exist
   useEffect(() => {
@@ -71,11 +75,36 @@ export default function ChatScreen() {
 
   const renderEmptyChat = () => (
     <View style={styles.emptyContainer}>
-      <EmptyState
-        icon="chatbubble-ellipses-outline"
-        title="Start a conversation"
-        subtitle={`Send a message to start chatting with ${selectedModel.name}`}
-      />
+      {!isAuthenticated ? (
+        <View style={styles.authPromptContainer}>
+          <Ionicons name="lock-closed-outline" size={48} color="#6b7280" />
+          <Text style={styles.authPromptTitle}>Sign in to Chat</Text>
+          <Text style={styles.authPromptSubtitle}>
+            Sign in with your free Puter account or connect to an Open-WebUI
+            server to start chatting.
+          </Text>
+          <View style={styles.authButtons}>
+            <Button
+              title="Sign in with Puter (Free)"
+              onPress={() => router.push("/(auth)/puter-auth")}
+              variant="primary"
+              icon="sparkles"
+            />
+            <Button
+              title="Connect to Server"
+              onPress={() => router.push("/(auth)/login")}
+              variant="secondary"
+              icon="server-outline"
+            />
+          </View>
+        </View>
+      ) : (
+        <EmptyState
+          icon="chatbubble-ellipses-outline"
+          title="Start a conversation"
+          subtitle={`Send a message to start chatting with ${selectedModel.name}`}
+        />
+      )}
     </View>
   );
 
@@ -124,37 +153,46 @@ export default function ChatScreen() {
         </View>
       )}
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Type a message..."
-          placeholderTextColor="#9ca3af"
-          multiline
-          maxLength={4000}
-          editable={!isStreaming}
-          onSubmitEditing={handleSend}
-        />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            (!inputText.trim() || isStreaming) && styles.sendButtonDisabled,
-          ]}
-          onPress={handleSend}
-          disabled={!inputText.trim() || isStreaming}
-        >
-          {isStreaming ? (
-            <Ionicons name="stop" size={20} color="#ffffff" />
-          ) : (
-            <Ionicons
-              name="send"
-              size={20}
-              color={!inputText.trim() ? "#9ca3af" : "#ffffff"}
-            />
-          )}
-        </TouchableOpacity>
-      </View>
+      {!isAuthenticated && messages.length === 0 ? null : (
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder={
+              isAuthenticated
+                ? "Type a message..."
+                : "Sign in to start chatting"
+            }
+            placeholderTextColor="#9ca3af"
+            multiline
+            maxLength={4000}
+            editable={!isStreaming && isAuthenticated}
+            onSubmitEditing={handleSend}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!inputText.trim() || isStreaming || !isAuthenticated) &&
+                styles.sendButtonDisabled,
+            ]}
+            onPress={handleSend}
+            disabled={!inputText.trim() || isStreaming || !isAuthenticated}
+          >
+            {isStreaming ? (
+              <Ionicons name="stop" size={20} color="#ffffff" />
+            ) : (
+              <Ionicons
+                name="send"
+                size={20}
+                color={
+                  !inputText.trim() || !isAuthenticated ? "#9ca3af" : "#ffffff"
+                }
+              />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -238,5 +276,27 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: "#e5e7eb",
+  },
+  authPromptContainer: {
+    alignItems: "center",
+    paddingHorizontal: 32,
+    gap: 16,
+  },
+  authPromptTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#1f2937",
+    marginTop: 12,
+  },
+  authPromptSubtitle: {
+    fontSize: 15,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  authButtons: {
+    gap: 12,
+    marginTop: 8,
+    width: "100%",
   },
 });
