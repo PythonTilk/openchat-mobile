@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Conversation, Message, Model } from "../types";
 import { PUTER_MODELS } from "../constants";
+import { storage } from "../services/storage";
 
 interface ChatState {
   // State
@@ -10,6 +11,7 @@ interface ChatState {
   availableModels: Model[];
   isStreaming: boolean;
   streamingContent: string;
+  isHydrated: boolean;
 }
 
 interface ChatActions {
@@ -36,6 +38,10 @@ interface ChatActions {
 
   // Helpers
   createNewConversation: (title?: string) => Conversation;
+
+  // Persistence
+  hydrate: () => Promise<void>;
+  persistConversations: () => Promise<void>;
 }
 
 type ChatStore = ChatState & ChatActions;
@@ -48,42 +54,55 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   availableModels: [...PUTER_MODELS],
   isStreaming: false,
   streamingContent: "",
+  isHydrated: false,
 
   // Conversation actions
   setConversations: (conversations) => set({ conversations }),
 
-  addConversation: (conversation) =>
+  addConversation: (conversation) => {
     set((state) => ({
       conversations: [conversation, ...state.conversations],
-    })),
+    }));
+    // Persist after adding
+    get().persistConversations();
+  },
 
-  updateConversation: (id, updates) =>
+  updateConversation: (id, updates) => {
     set((state) => ({
       conversations: state.conversations.map((c) =>
         c.id === id ? { ...c, ...updates } : c,
       ),
-    })),
+    }));
+    // Persist after updating
+    get().persistConversations();
+  },
 
-  deleteConversation: (id) =>
+  deleteConversation: (id) => {
     set((state) => ({
       conversations: state.conversations.filter((c) => c.id !== id),
       currentConversationId:
         state.currentConversationId === id ? null : state.currentConversationId,
-    })),
+    }));
+    // Persist after deleting
+    get().persistConversations();
+  },
 
   setCurrentConversation: (id) => set({ currentConversationId: id }),
 
   // Message actions
-  addMessage: (conversationId, message) =>
+  addMessage: (conversationId, message) => {
     set((state) => ({
       conversations: state.conversations.map((c) =>
         c.id === conversationId
           ? { ...c, messages: [...c.messages, message], updated_at: new Date() }
           : c,
       ),
-    })),
+    }));
+    // Persist after adding message
+    get().persistConversations();
+  },
 
-  updateLastMessage: (conversationId, content) =>
+  updateLastMessage: (conversationId, content) => {
     set((state) => ({
       conversations: state.conversations.map((c) =>
         c.id === conversationId
@@ -95,14 +114,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             }
           : c,
       ),
-    })),
+    }));
+    // Note: We don't persist during streaming to avoid excessive writes
+    // The final message will be persisted when streaming ends
+  },
 
   // Model actions
   setSelectedModel: (model) => set({ selectedModel: model }),
   setAvailableModels: (models) => set({ availableModels: models }),
 
   // Streaming
-  setIsStreaming: (streaming) => set({ isStreaming: streaming }),
+  setIsStreaming: (streaming) => {
+    set({ isStreaming: streaming });
+    // Persist when streaming ends (message is complete)
+    if (!streaming) {
+      get().persistConversations();
+    }
+  },
   setStreamingContent: (content) => set({ streamingContent: content }),
   appendStreamingContent: (chunk) =>
     set((state) => ({
@@ -124,5 +152,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     get().addConversation(conversation);
     get().setCurrentConversation(conversation.id);
     return conversation;
+  },
+
+  // Persistence
+  hydrate: async () => {
+    try {
+      const conversations = await storage.getConversations();
+      set({
+        conversations,
+        isHydrated: true,
+      });
+    } catch (error) {
+      console.error("Failed to hydrate chat store:", error);
+      set({ isHydrated: true });
+    }
+  },
+
+  persistConversations: async () => {
+    try {
+      const { conversations } = get();
+      await storage.setConversations(conversations);
+    } catch (error) {
+      console.error("Failed to persist conversations:", error);
+    }
   },
 }));

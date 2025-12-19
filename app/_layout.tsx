@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useAuthStore } from "../src/stores/authStore";
+import { useChatStore } from "../src/stores/chatStore";
 import { Providers } from "../src/providers";
 
 function LoadingScreen() {
@@ -19,15 +20,17 @@ function LoadingScreen() {
 }
 
 function RootLayoutNav() {
-  const { hydrate, isHydrated } = useAuthStore();
+  const { hydrate: hydrateAuth, isHydrated: isAuthHydrated } = useAuthStore();
+  const { hydrate: hydrateChat, isHydrated: isChatHydrated } = useChatStore();
   const colorScheme = useColorScheme();
 
   useEffect(() => {
-    hydrate();
-  }, [hydrate]);
+    hydrateAuth();
+    hydrateChat();
+  }, [hydrateAuth, hydrateChat]);
 
-  // Wait for auth to hydrate before rendering
-  if (!isHydrated) {
+  // Wait for both stores to hydrate before rendering
+  if (!isAuthHydrated || !isChatHydrated) {
     return <LoadingScreen />;
   }
 
