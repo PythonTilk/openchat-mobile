@@ -1,5 +1,4 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, useColorScheme } from "react-native";
 import type { Message } from "../../types";
 
 interface MessageBubbleProps {
@@ -8,6 +7,8 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
   const isUser = message.role === "user";
 
   return (
@@ -20,18 +21,28 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
       <View
         style={[
           styles.bubble,
-          isUser ? styles.userBubble : styles.assistantBubble,
+          isUser
+            ? styles.userBubble
+            : [styles.assistantBubble, isDark && styles.assistantBubbleDark],
         ]}
       >
         <Text
-          style={[styles.text, isUser ? styles.userText : styles.assistantText]}
+          style={[
+            styles.text,
+            isUser
+              ? styles.userText
+              : [styles.assistantText, isDark && styles.assistantTextDark],
+          ]}
+          selectable
         >
-          {message.content}
+          {message.content || (isStreaming ? "" : "...")}
           {isStreaming && <Text style={styles.cursor}>|</Text>}
         </Text>
       </View>
       {message.model && !isUser && (
-        <Text style={styles.modelLabel}>{message.model}</Text>
+        <Text style={[styles.modelLabel, isDark && styles.modelLabelDark]}>
+          {message.model}
+        </Text>
       )}
     </View>
   );
@@ -61,6 +72,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
     borderBottomLeftRadius: 4,
   },
+  assistantBubbleDark: {
+    backgroundColor: "#374151",
+  },
   text: {
     fontSize: 16,
     lineHeight: 22,
@@ -71,6 +85,9 @@ const styles = StyleSheet.create({
   assistantText: {
     color: "#1f2937",
   },
+  assistantTextDark: {
+    color: "#f9fafb",
+  },
   cursor: {
     opacity: 0.5,
   },
@@ -79,5 +96,8 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     marginTop: 4,
     marginLeft: 8,
+  },
+  modelLabelDark: {
+    color: "#6b7280",
   },
 });

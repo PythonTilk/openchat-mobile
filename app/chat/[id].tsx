@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
+  Text,
   TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
@@ -8,12 +9,11 @@ import {
   StyleSheet,
   FlatList,
 } from "react-native";
-import { useLocalSearchParams, Stack } from "expo-router";
+import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useChat } from "../../src/hooks/useChat";
 import { useChatStore } from "../../src/stores/chatStore";
-import { useAuthStore } from "../../src/stores/authStore";
-import { createPuterChatService } from "../../src/services/puterChat";
-import { MessageBubble } from "../../src/components";
+import { MessageBubble, EmptyState } from "../../src/components";
 import type { Message } from "../../src/types";
 
 export default function ChatScreen() {
@@ -21,93 +21,30 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState("");
   const listRef = useRef<FlatList<Message>>(null);
 
-  const {
-    conversations,
-    selectedModel,
-    isStreaming,
-    addMessage,
-    setIsStreaming,
-    appendStreamingContent,
-    clearStreamingContent,
-    updateLastMessage,
-    updateConversation,
-  } = useChatStore();
+  const { selectedModel } = useChatStore();
+  const { conversation, messages, isStreaming, error, sendMessage } = useChat(
+    id || "",
+  );
 
-  const { puterToken } = useAuthStore();
+  // Redirect if conversation doesn't exist
+  useEffect(() => {
+    if (id && !conversation) {
+      // Give it a moment to load
+      const timer = setTimeout(() => {
+        if (!conversation) {
+          router.back();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [id, conversation]);
 
-  const conversation = conversations.find((c) => c.id === id);
-  const messages = conversation?.messages || [];
-
-  const sendMessage = useCallback(async () => {
-    if (!inputText.trim() || isStreaming || !id) return;
-
-    const userMessage: Message = {
-      id: `msg-${Date.now()}`,
-      role: "user",
-      content: inputText.trim(),
-      timestamp: new Date(),
-    };
-
-    // Add user message
-    addMessage(id, userMessage);
-    const messageText = inputText.trim();
+  const handleSend = useCallback(async () => {
+    if (!inputText.trim() || isStreaming) return;
+    const text = inputText.trim();
     setInputText("");
-
-    // Update conversation title if it's the first message
-    if (messages.length === 0) {
-      const title =
-        messageText.slice(0, 50) + (messageText.length > 50 ? "..." : "");
-      updateConversation(id, { title });
-    }
-
-    // Create placeholder assistant message
-    const assistantMessage: Message = {
-      id: `msg-${Date.now() + 1}`,
-      role: "assistant",
-      content: "",
-      timestamp: new Date(),
-      model: selectedModel.id,
-    };
-    addMessage(id, assistantMessage);
-
-    // Start streaming
-    setIsStreaming(true);
-    clearStreamingContent();
-
-    try {
-      const chatService = createPuterChatService(puterToken);
-      const allMessages = [...messages, userMessage];
-
-      let fullContent = "";
-      for await (const chunk of chatService.streamChat(
-        selectedModel.id,
-        allMessages,
-      )) {
-        fullContent += chunk;
-        appendStreamingContent(chunk);
-        updateLastMessage(id, fullContent);
-      }
-    } catch (error) {
-      console.error("Chat error:", error);
-      updateLastMessage(id, "Sorry, an error occurred. Please try again.");
-    } finally {
-      setIsStreaming(false);
-      clearStreamingContent();
-    }
-  }, [
-    inputText,
-    isStreaming,
-    id,
-    messages,
-    selectedModel,
-    puterToken,
-    addMessage,
-    setIsStreaming,
-    appendStreamingContent,
-    clearStreamingContent,
-    updateLastMessage,
-    updateConversation,
-  ]);
+    await sendMessage(text);
+  }, [inputText, isStreaming, sendMessage]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -132,6 +69,16 @@ export default function ChatScreen() {
     [isStreaming, messages.length],
   );
 
+  const renderEmptyChat = () => (
+    <View style={styles.emptyContainer}>
+      <EmptyState
+        icon="chatbubble-ellipses-outline"
+        title="Start a conversation"
+        subtitle={`Send a message to start chatting with ${selectedModel.name}`}
+      />
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -142,21 +89,40 @@ export default function ChatScreen() {
         options={{
           title: conversation?.title || "Chat",
           headerBackTitle: "Back",
+          headerRight: () => (
+            <View style={styles.headerRight}>
+              <View style={styles.modelBadge}>
+                <Ionicons name="cube-outline" size={14} color="#6b7280" />
+                <Text style={styles.modelBadgeText}>{selectedModel.name}</Text>
+              </View>
+            </View>
+          ),
         }}
       />
 
       <View style={styles.messagesContainer}>
-        <FlatList
-          ref={listRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          onContentSizeChange={() =>
-            listRef.current?.scrollToEnd({ animated: false })
-          }
-        />
+        {messages.length === 0 ? (
+          renderEmptyChat()
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            onContentSizeChange={() =>
+              listRef.current?.scrollToEnd({ animated: false })
+            }
+          />
+        )}
       </View>
+
+      {error && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="alert-circle" size={16} color="#ef4444" />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
 
       <View style={styles.inputContainer}>
         <TextInput
@@ -164,23 +130,29 @@ export default function ChatScreen() {
           value={inputText}
           onChangeText={setInputText}
           placeholder="Type a message..."
+          placeholderTextColor="#9ca3af"
           multiline
           maxLength={4000}
           editable={!isStreaming}
+          onSubmitEditing={handleSend}
         />
         <TouchableOpacity
           style={[
             styles.sendButton,
             (!inputText.trim() || isStreaming) && styles.sendButtonDisabled,
           ]}
-          onPress={sendMessage}
+          onPress={handleSend}
           disabled={!inputText.trim() || isStreaming}
         >
-          <Ionicons
-            name="send"
-            size={20}
-            color={!inputText.trim() || isStreaming ? "#9ca3af" : "#ffffff"}
-          />
+          {isStreaming ? (
+            <Ionicons name="stop" size={20} color="#ffffff" />
+          ) : (
+            <Ionicons
+              name="send"
+              size={20}
+              color={!inputText.trim() ? "#9ca3af" : "#ffffff"}
+            />
+          )}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -192,12 +164,48 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#ffffff",
   },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modelBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f3f4f6",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  modelBadgeText: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
   messagesContainer: {
     flex: 1,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   listContent: {
     paddingHorizontal: 16,
     paddingVertical: 8,
+    flexGrow: 1,
+  },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fef2f2",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  errorText: {
+    fontSize: 13,
+    color: "#ef4444",
+    flex: 1,
   },
   inputContainer: {
     flexDirection: "row",
@@ -218,6 +226,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     fontSize: 16,
     marginRight: 8,
+    color: "#1f2937",
   },
   sendButton: {
     width: 40,
